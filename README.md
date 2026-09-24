@@ -30,7 +30,7 @@ to install and no data files to fetch. `uv run` builds the environment on first
 use.
 
 ```
-git clone <this repo> && cd DataViz
+git clone <this repo> && cd data-viz-wall
 uv run data-viz-wall
 ```
 
