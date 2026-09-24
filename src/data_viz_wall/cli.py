@@ -19,7 +19,7 @@ from .server import CoalescentWall, HybridWall, PatternWall, SyntenyWall, serve
 @click.option("--blocks", default=600, show_default=True, help="Conserved synteny blocks.")
 @click.option("--karyotype", default=10, show_default=True, help="Ancestral chromosomes.")
 @click.option("--rearrangements", default=240, show_default=True, help="Events per run.")
-@click.option("--pace", default=1.1, show_default=True, help="Seconds per rearrangement.")
+@click.option("--pace", default=2.0, show_default=True, help="Seconds per rearrangement.")
 @click.option("--demes", default=80, show_default=True, help="Demes across the transect.")
 @click.option("--deme-size", default=50, show_default=True, help="Individuals per deme.")
 @click.option("--loci", default=20, show_default=True, help="Unlinked ancestry markers.")
