@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Coalescent — genealogy</title>
+<link rel="stylesheet" href="wall.css">
+<canvas id="c"></canvas>
+<div class="badge">coalescent wall · genealogy</div>
+<script>
+const CSS = getComputedStyle(document.documentElement);
+const T = new Proxy({}, { get: (c, k) => c[k] ?? (c[k] = CSS.getPropertyValue('--' + k).trim()) });
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const r = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * r; cv.height = H * r; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+const S = { n: 0, ne: 0, theta: 0, slot: {}, node: {}, muts: [], spectrum: [],
+            stats: null, t: 0, k: 0, tmax: 1, scale: 1, root: null, born: 0 };
+
+function reset(d){
+  S.n = d.n; S.ne = d.ne; S.theta = d.theta;
+  S.slot = {}; d.order.forEach((leaf, i) => S.slot[leaf] = i);
+  S.node = {}; S.muts = []; S.spectrum = []; S.stats = null;
+  S.t = 0; S.k = d.n; S.tmax = 1; S.scale = 1; S.root = null;
+  for (const leaf of d.order) S.node[leaf] = { t: 0, x: S.slot[leaf], kids: null, born: 0 };
+}
+
+function apply(d){
+  if (d.kind === 'reset') return reset(d);
+  if (d.kind === 'wait') { S.t = d.t; S.k = d.k; S.tmax = Math.max(S.tmax, d.t); }
+  if (d.kind === 'coalesce') {
+    const [a, b] = d.children;
+    S.node[d.parent] = { t: d.t, x: (S.node[a].x + S.node[b].x) / 2,
+                         kids: [a, b], born: performance.now() };
+    S.k = d.k; S.t = d.t; S.tmax = Math.max(S.tmax, d.t);
+  }
+  if (d.kind === 'mrca') S.root = d.root;
+  if (d.kind === 'mutate')
+    for (const o of d.offsets) S.muts.push({ branch: d.branch, parent: d.parent, o,
+                                             carriers: d.carriers, born: performance.now() });
+  if (d.kind === 'spectrum') S.spectrum = d.counts;
+  if (d.kind === 'stats') S.stats = d;
+}
+
+// ---- geometry -------------------------------------------------------------
+const PAD = { l: 120, r: 380, t: 110, b: 130 };
+const px = x => PAD.l + (x + 0.5) * (W - PAD.l - PAD.r) / Math.max(S.n, 1);
+const py = t => H - PAD.b - Math.pow(t / S.scale, 0.62) * (H - PAD.t - PAD.b);
+
+function draw(now){
+  S.scale += (Math.max(S.tmax, 1) - S.scale) * 0.06;   // ease the zoom-out
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  axis();
+  ctx.lineCap = 'round';
+  for (const id in S.node) {
+    const p = S.node[id];
+    if (!p.kids) continue;
+    const g = Math.min(1, (now - p.born) / 500);
+    const yp = py(p.t);
+    for (const kid of p.kids) {
+      const k = S.node[kid], yk = py(k.t);
+      const y = yk + (yp - yk) * ease(g);
+      ctx.strokeStyle = T.branch; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(px(k.x), yk); ctx.lineTo(px(k.x), y); ctx.stroke();
+    }
+    if (g > 0.98) {
+      ctx.strokeStyle = T.accent; ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(px(S.node[p.kids[0]].x), yp); ctx.lineTo(px(S.node[p.kids[1]].x), yp);
+      ctx.stroke();
+      ctx.fillStyle = T.accent;
+      ctx.beginPath(); ctx.arc(px(p.x), yp, 4, 0, 7); ctx.fill();
+    }
+  }
+  mutations(now); tips(); spectrum(); readout();
+  requestAnimationFrame(draw);
+}
+const ease = g => g * g * (3 - 2 * g);
+
+function axis(){
+  ctx.strokeStyle = T.grid; ctx.lineWidth = 1;
+  ctx.fillStyle = T.label; ctx.font = '15px "SF Mono", Menlo, monospace';
+  const top = S.scale;
+  for (let f = 0; f <= 1.0001; f += 0.25) {
+    const t = top * Math.pow(f, 1 / 0.62), y = py(t);
+    ctx.beginPath(); ctx.moveTo(PAD.l - 40, y); ctx.lineTo(W - PAD.r + 20, y); ctx.stroke();
+    ctx.fillText(Math.round(t).toLocaleString(), 18, y - 8);
+  }
+  ctx.save(); ctx.translate(30, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = T.faint; ctx.font = '16px "SF Mono", Menlo, monospace';
+  ctx.textAlign = 'center'; ctx.fillText('GENERATIONS BEFORE PRESENT', 0, -70);
+  ctx.restore(); ctx.textAlign = 'left';
+}
+
+function mutations(now){
+  for (const m of S.muts) {
+    const c = S.node[m.branch], p = S.node[m.parent];
+    if (!c || !p) continue;
+    const y = py(c.t) + (py(p.t) - py(c.t)) * m.o, x = px(c.x);
+    const a = Math.min(1, (now - m.born) / 400);
+    ctx.strokeStyle = T.warm; ctx.lineWidth = 2.6; ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function tips(){
+  ctx.fillStyle = T.green;
+  for (let i = 0; i < S.n; i++) {
+    const y = py(0);
+    ctx.beginPath(); ctx.arc(px(i), y, 5, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = T.faint; ctx.font = '16px "SF Mono", Menlo, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('n = ' + S.n + '  SAMPLED CHROMOSOMES', (PAD.l + W - PAD.r) / 2, H - 52);
+  ctx.textAlign = 'left';
+}
+
+function spectrum(){
+  if (!S.spectrum.length) return;
+  const x0 = W - PAD.r + 60, y0 = H - PAD.b - 20, w = PAD.r - 110, h = 230;
+  const max = Math.max(...S.spectrum, 1), bw = w / S.spectrum.length;
+  ctx.fillStyle = T.dim; ctx.font = '17px "SF Mono", Menlo, monospace';
+  ctx.fillText('SITE FREQUENCY SPECTRUM', x0, y0 - h - 26);
+  S.spectrum.forEach((v, i) => {
+    const bh = (v / max) * h;
+    ctx.fillStyle = T.warm;
+    ctx.fillRect(x0 + i * bw + 1, y0 - bh, bw - 2, bh);
+  });
+  ctx.strokeStyle = T.axis; ctx.beginPath();
+  ctx.moveTo(x0, y0 + 1); ctx.lineTo(x0 + w, y0 + 1); ctx.stroke();
+  ctx.fillStyle = T.label; ctx.font = '14px "SF Mono", Menlo, monospace';
+  ctx.fillText('derived allele count  1 → ' + S.spectrum.length, x0, y0 + 24);
+}
+
+function readout(){
+  const x = W - PAD.r + 60;
+  let y = PAD.t + 10;
+  const line = (label, value, color) => {
+    ctx.fillStyle = T.label; ctx.font = '17px "SF Mono", Menlo, monospace';
+    ctx.fillText(label, x, y);
+    ctx.fillStyle = color || T.ink; ctx.font = '30px "SF Mono", Menlo, monospace';
+    ctx.fillText(value, x, y + 34); y += 74;
+  };
+  ctx.fillStyle = T.ink; ctx.font = '26px "SF Mono", Menlo, monospace';
+  ctx.fillText('KINGMAN COALESCENT', x, y - 22); y += 26;
+  line('Ne · θ', S.ne.toLocaleString() + '  ·  ' + S.theta);
+  line('lineages remaining', String(S.k), T.accent);
+  line('time before present', Math.round(S.t).toLocaleString() + ' gen', T.accent);
+  if (S.stats) {
+    line('segregating sites  S', String(S.stats.s), T.warm);
+    line('nucleotide diversity  π', S.stats.pi.toFixed(2), T.warm);
+    line("Watterson's θ_W", S.stats.theta_w.toFixed(2), T.warm);
+    line("Tajima's D", S.stats.tajimas_d.toFixed(3),
+         S.stats.tajimas_d < 0 ? T.danger : T.green);
+  }
+}
+
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws?feed=coalescent`);
+  ws.onmessage = e => apply(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+requestAnimationFrame(draw);
+</script>

@@ -1,0 +1,191 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synteny — karyotype evolution</title>
+<link rel="stylesheet" href="wall.css">
+<style>
+  body { display: grid; grid-template-columns: 1fr 460px; }
+  #stage { position: relative; overflow: hidden; }
+  canvas#c { position: absolute; inset: 0; }
+  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0 0 22px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
+       text-transform: uppercase; color: var(--dim); }
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 13px 20px; margin: 0 0 34px; }
+  dt { color: var(--dim); font-size: 17px; align-self: center; }
+  dd { margin: 0; font-size: 30px; text-align: right; }
+  #ox { width: 100%; height: 380px; display: block; }
+  .cap { color: var(--dim); font-size: 15px; letter-spacing: .12em;
+         text-transform: uppercase; margin-bottom: 10px; }
+  #last { color: var(--accent); font-size: 19px; min-height: 52px; margin-bottom: 28px; }
+</style>
+<div id="stage"><canvas id="c"></canvas></div>
+<aside>
+  <h1>Karyotype evolution</h1>
+  <div id="last">waiting for the simulator…</div>
+  <dl>
+    <dt>rearrangements</dt><dd id="ev">—</dd>
+    <dt>chromosomes</dt><dd id="nc">—</dd>
+    <dt>syntenic runs</dt><dd id="runs">—</dd>
+    <dt>run N50</dt><dd id="n50">—</dd>
+    <dt>largest run</dt><dd id="big">—</dd>
+    <dt>breakpoint reuse</dt><dd id="reuse">—</dd>
+  </dl>
+  <div class="cap">oxford plot · ancestral vs current order</div>
+  <canvas id="ox"></canvas>
+</aside>
+<div class="badge">synteny wall · karyotype</div>
+<script>
+const CSS = getComputedStyle(document.documentElement);
+const T = new Proxy({}, { get: (c, k) => c[k] ?? (c[k] = CSS.getPropertyValue('--' + k).trim()) });
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const ox = document.getElementById('ox'), oxc = ox.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const r = devicePixelRatio || 1, s = document.getElementById('stage');
+  W = s.clientWidth; H = s.clientHeight;
+  cv.width = W * r; cv.height = H * r; ctx.setTransform(r, 0, 0, r, 0, 0);
+  ox.width = ox.clientWidth * r; ox.height = ox.clientHeight * r;
+  oxc.setTransform(r, 0, 0, r, 0, 0);
+}
+addEventListener('resize', () => { resize(); layoutAncestor(); });
+
+const S = { nb: 0, anc: [], from: [], to: [], born: 0, chroms: [], home: [], order: [] };
+const hue = i => `hsl(${(i * 47) % 360} ${T['hue-s']} ${T['hue-l']})`;
+
+// ---- layout: chromosomes as a row of bars, scaled by block count -----------
+function bars(lengths, y, h){
+  const gap = 14, pad = 70, usable = W - 2 * pad - gap * (lengths.length - 1);
+  const total = lengths.reduce((a, b) => a + b, 0);
+  let x = pad;
+  return lengths.map(n => {
+    const w = usable * n / total, bar = { x, y, w, h, n };
+    x += w + gap;
+    return bar;
+  });
+}
+
+function layoutAncestor(){
+  if (!S.nb) return;
+  const lens = S.anc.map(c => c.length);
+  S.ancBars = bars(lens, H * 0.20, 34);
+  S.ancPos = new Array(S.nb + 1);
+  S.anc.forEach((chrom, ci) => {
+    const b = S.ancBars[ci];
+    chrom.forEach((blk, i) => S.ancPos[Math.abs(blk)] = b.x + (i + 0.5) * b.w / b.n);
+  });
+}
+
+function setKaryotype(chroms){
+  if (!S.nb) {
+    S.nb = chroms.reduce((a, c) => a + c.length, 0);
+    S.anc = chroms.map(c => c.slice());
+    S.home = new Array(S.nb + 1);
+    S.anc.forEach((c, ci) => c.forEach(b => S.home[Math.abs(b)] = ci));
+    S.ancOrder = new Array(S.nb + 1);
+    let k = 0;
+    S.anc.forEach(c => c.forEach(b => S.ancOrder[Math.abs(b)] = k++));
+    layoutAncestor();
+  }
+  S.chroms = chroms;
+  S.curBars = bars(chroms.map(c => c.length), H * 0.74, 34);
+  S.from = S.to.length ? S.to.slice() : null;
+  S.to = new Array(S.nb + 1);
+  S.strand = new Array(S.nb + 1);
+  S.order = new Array(S.nb + 1);
+  let k = 0;
+  chroms.forEach((chrom, ci) => {
+    const b = S.curBars[ci];
+    chrom.forEach((blk, i) => {
+      S.to[Math.abs(blk)] = b.x + (i + 0.5) * b.w / b.n;
+      S.strand[Math.abs(blk)] = Math.sign(blk);
+      S.order[Math.abs(blk)] = k++;
+    });
+  });
+  if (!S.from) S.from = S.to.slice();
+  S.born = performance.now();
+  drawOxford();
+}
+
+const ease = t => t * t * (3 - 2 * t);
+
+function draw(now){
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  if (!S.nb) return requestAnimationFrame(draw);
+  const t = ease(Math.min(1, (now - S.born) / 700));
+  const yA = S.ancBars[0].y + 34, yC = S.curBars[0].y;
+
+  ctx.lineWidth = 1;
+  for (let b = 1; b <= S.nb; b++) {
+    const x0 = S.ancPos[b], x1 = S.from[b] + (S.to[b] - S.from[b]) * t;
+    ctx.strokeStyle = hue(S.home[b]); ctx.globalAlpha = 0.22;
+    ctx.beginPath(); ctx.moveTo(x0, yA);
+    ctx.bezierCurveTo(x0, yA + (yC - yA) * 0.45, x1, yC - (yC - yA) * 0.45, x1, yC);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  paint(S.ancBars, S.anc, 'ANCESTOR', -1);
+  paint(S.curBars, S.chroms, 'DESCENDANT', 1);
+  requestAnimationFrame(draw);
+}
+
+function paint(barset, chroms, label, side){
+  ctx.font = '15px "SF Mono", Menlo, monospace';
+  barset.forEach((b, ci) => {
+    const chrom = chroms[ci], w = b.w / b.n;
+    chrom.forEach((blk, i) => {
+      ctx.fillStyle = hue(S.home[Math.abs(blk)]);
+      ctx.globalAlpha = blk < 0 ? 0.55 : 1;         // inverted blocks sit dimmer
+      ctx.fillRect(b.x + i * w, b.y, Math.max(w, 0.7), b.h);
+    });
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = T.bg; ctx.lineWidth = 2;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = T.label; ctx.textAlign = 'center';
+    ctx.fillText(ci + 1, b.x + b.w / 2, b.y + (side < 0 ? -14 : b.h + 22));
+  });
+  ctx.textAlign = 'left'; ctx.fillStyle = T.faint;
+  ctx.font = '16px "SF Mono", Menlo, monospace';
+  ctx.fillText(label, 70, barset[0].y + (side < 0 ? -44 : 34 + 52));
+}
+
+function drawOxford(){
+  const w = ox.clientWidth, h = ox.clientHeight, pad = 24;
+  oxc.clearRect(0, 0, w, h);
+  oxc.strokeStyle = T.grid; oxc.lineWidth = 1;
+  oxc.strokeRect(pad, pad, w - 2 * pad, h - 2 * pad);
+  for (let b = 1; b <= S.nb; b++) {
+    const x = pad + S.ancOrder[b] / S.nb * (w - 2 * pad);
+    const y = h - pad - S.order[b] / S.nb * (h - 2 * pad);
+    oxc.fillStyle = hue(S.home[b]);
+    oxc.fillRect(x, y, 2.2, 2.2);
+  }
+  oxc.fillStyle = T.faint; oxc.font = '13px "SF Mono", Menlo, monospace';
+  oxc.fillText('ancestral order →', pad, h - 6);
+}
+
+const el = id => document.getElementById(id);
+const DESC = {
+  inversion: d => `inversion of ${d.span} blocks on chromosome ${d.chrom + 1}`,
+  translocation: d => `reciprocal translocation · chromosomes ${d.chroms[0] + 1} ↔ ${d.chroms[1] + 1}`,
+  fusion: d => `fusion · ${d.n_chrom} chromosomes remain`,
+  fission: d => `fission · ${d.n_chrom} chromosomes now`,
+  ancestor: d => `ancestral karyotype · ${d.n_blocks} blocks on ${d.n_chrom} chromosomes`,
+};
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws?feed=synteny`);
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.kind === 'reset') { S.nb = 0; S.to = []; S.anc = []; }
+    if (d.kind === 'karyotype') setKaryotype(d.chroms);
+    if (DESC[d.kind]) el('last').textContent = DESC[d.kind](d);
+    if (d.kind === 'contiguity') {
+      el('ev').textContent = d.events; el('nc').textContent = d.n_chrom;
+      el('runs').textContent = d.runs; el('n50').textContent = d.n50;
+      el('big').textContent = d.largest;
+      el('reuse').textContent = (d.reuse * 100).toFixed(1) + '%';
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+resize(); connect(); requestAnimationFrame(draw);
+</script>

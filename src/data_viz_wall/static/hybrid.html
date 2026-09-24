@@ -1,0 +1,159 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hybrid zone — tension cline</title>
+<link rel="stylesheet" href="wall.css">
+<style>
+  body { display: grid; grid-template-columns: 1fr 460px; }
+  #stage { position: relative; overflow: hidden; }
+  canvas#c { position: absolute; inset: 0; }
+  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0 0 22px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
+       text-transform: uppercase; color: var(--dim); }
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 13px 20px; margin: 0 0 32px; }
+  dt { color: var(--dim); font-size: 17px; align-self: center; }
+  dd { margin: 0; font-size: 30px; text-align: right; }
+  #tri { width: 100%; height: 400px; display: block; }
+  .cap { color: var(--dim); font-size: 15px; letter-spacing: .12em;
+         text-transform: uppercase; margin-bottom: 10px; }
+  #last { color: var(--accent); font-size: 19px; min-height: 26px; margin-bottom: 26px; }
+</style>
+<div id="stage"><canvas id="c"></canvas></div>
+<aside>
+  <h1>Tension zone</h1>
+  <div id="last">waiting for the simulator…</div>
+  <dl>
+    <dt>generation</dt><dd id="gen">—</dd>
+    <dt>cline width</dt><dd id="w">—</dd>
+    <dt>uncoupled expectation</dt><dd id="we">—</dd>
+    <dt>centre</dt><dd id="ctr">—</dd>
+    <dt>mean fitness</dt><dd id="fit">—</dd>
+    <dt>m · s</dt><dd id="ms">—</dd>
+  </dl>
+  <div class="cap">hybrid index × interclass heterozygosity</div>
+  <canvas id="tri"></canvas>
+</aside>
+<div class="badge">hybrid wall · cline</div>
+<script>
+const CSS = getComputedStyle(document.documentElement);
+const T = new Proxy({}, { get: (c, k) => c[k] ?? (c[k] = CSS.getPropertyValue('--' + k).trim()) });
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const tri = document.getElementById('tri'), tc = tri.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const r = devicePixelRatio || 1, s = document.getElementById('stage');
+  W = s.clientWidth; H = s.clientHeight;
+  cv.width = W * r; cv.height = H * r; ctx.setTransform(r, 0, 0, r, 0, 0);
+  tri.width = tri.clientWidth * r; tri.height = tri.clientHeight * r;
+  tc.setTransform(r, 0, 0, r, 0, 0);
+}
+addEventListener('resize', resize);
+
+const rgb = n => T[n].split(',').map(Number);          // the two parental ancestries
+const LEFT = rgb('anc-left'), RIGHT = rgb('anc-right');
+const S = { p: [], loci: [], width: 0, centre: 0 };
+const blend = t => LEFT.map((c, i) => Math.round(c + (RIGHT[i] - c) * t));
+
+const PAD = { l: 110, r: 70, t: 120, b: 190 };
+function draw(){
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  if (!S.p.length) return requestAnimationFrame(draw);
+  const n = S.p.length;
+  const X = d => PAD.l + d * (W - PAD.l - PAD.r) / (n - 1);
+  const Y = p => H - PAD.b - p * (H - PAD.t - PAD.b);
+
+  // grid
+  ctx.strokeStyle = T.grid; ctx.lineWidth = 1; ctx.fillStyle = T.label;
+  ctx.font = '15px "SF Mono", Menlo, monospace';
+  for (let f = 0; f <= 1.0001; f += 0.25) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, Y(f)); ctx.lineTo(W - PAD.r, Y(f)); ctx.stroke();
+    ctx.fillText(f.toFixed(2), 46, Y(f) + 5);
+  }
+
+  // per-locus clines: the spread among markers is real, not noise in the mean
+  ctx.lineWidth = 1.4; ctx.globalAlpha = 0.28;
+  for (const locus of S.loci) {
+    ctx.strokeStyle = T.branch; ctx.beginPath();
+    locus.forEach((p, d) => d ? ctx.lineTo(X(d), Y(p)) : ctx.moveTo(X(d), Y(p)));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // mean ancestry cline
+  ctx.lineWidth = 4; ctx.strokeStyle = T.ink; ctx.beginPath();
+  S.p.forEach((p, d) => d ? ctx.lineTo(X(d), Y(p)) : ctx.moveTo(X(d), Y(p)));
+  ctx.stroke();
+
+  // width bracket around the centre
+  if (S.width) {
+    const a = X(S.centre - S.width / 2), b = X(S.centre + S.width / 2), y = Y(0.5);
+    ctx.strokeStyle = T.warm; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a, y - 18); ctx.lineTo(a, y + 18); ctx.moveTo(b, y - 18); ctx.lineTo(b, y + 18);
+    ctx.moveTo(a, y); ctx.lineTo(b, y); ctx.stroke();
+    ctx.fillStyle = T.warm; ctx.textAlign = 'center';
+    ctx.font = '18px "SF Mono", Menlo, monospace';
+    ctx.fillText('w = ' + S.width.toFixed(1) + ' demes', (a + b) / 2, y - 30);
+    ctx.textAlign = 'left';
+  }
+
+  // the transect itself, painted in ancestry
+  const bw = (W - PAD.l - PAD.r) / n, y0 = H - PAD.b + 46;
+  S.p.forEach((p, d) => {
+    const [r, g, b] = blend(p);
+    ctx.fillStyle = `rgb(${r} ${g} ${b})`;
+    ctx.fillRect(PAD.l + d * bw, y0, bw + 0.6, 46);
+  });
+  ctx.fillStyle = T.faint; ctx.font = '16px "SF Mono", Menlo, monospace';
+  ctx.fillText('POPULATION A', PAD.l, y0 + 76);
+  ctx.textAlign = 'right'; ctx.fillText('POPULATION B', W - PAD.r, y0 + 76);
+  ctx.textAlign = 'left';
+  ctx.fillText('ancestry frequency', 46, PAD.t - 46);
+  requestAnimationFrame(draw);
+}
+
+// Triangle plot: pure parents at the bottom corners, F1s at the apex.
+function drawTriangle(index, inter){
+  const w = tri.clientWidth, h = tri.clientHeight, pad = 34;
+  const X = v => pad + v * (w - 2 * pad), Y = v => h - pad - v * (h - 2 * pad);
+  tc.clearRect(0, 0, w, h);
+  tc.strokeStyle = T.axis; tc.lineWidth = 1.5;
+  tc.beginPath();
+  tc.moveTo(X(0), Y(0)); tc.lineTo(X(0.5), Y(1)); tc.lineTo(X(1), Y(0)); tc.closePath();
+  tc.stroke();
+  for (let i = 0; i < index.length; i++) {
+    const [r, g, b] = blend(index[i]);
+    tc.fillStyle = `rgba(${r} ${g} ${b} / .5)`;
+    tc.beginPath(); tc.arc(X(index[i]), Y(inter[i]), 3, 0, 7); tc.fill();
+  }
+  tc.fillStyle = T.faint; tc.font = '13px "SF Mono", Menlo, monospace';
+  tc.fillText('A', X(0) - 6, Y(0) + 20); tc.fillText('B', X(1) - 6, Y(0) + 20);
+  tc.textAlign = 'center'; tc.fillText('F1', X(0.5), Y(1) - 10); tc.textAlign = 'left';
+}
+
+const el = id => document.getElementById(id);
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws?feed=hybrid`);
+  ws.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.kind === 'reset') {
+      S.p = []; S.loci = [];
+      el('we').textContent = d.expected.toFixed(1);
+      el('ms').textContent = `${d.m} · ${d.s}`;
+    }
+    if (d.kind === 'generation') el('gen').textContent = d.n;
+    if (d.kind === 'select') el('fit').textContent = d.mean_fitness.toFixed(3);
+    if (d.kind === 'cline') {
+      S.p = d.p; S.loci = d.loci; S.width = d.width; S.centre = d.centre;
+      el('w').textContent = d.width.toFixed(1);
+      el('ctr').textContent = 'deme ' + d.centre.toFixed(1);
+      el('last').textContent = `cline width ${d.width.toFixed(1)} demes`;
+    }
+    if (d.kind === 'hybrids') {
+      drawTriangle(d.index, d.inter);
+      el('last').textContent = `${d.f1_like} F1-like individuals in the zone`;
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+resize(); connect(); requestAnimationFrame(draw);
+</script>

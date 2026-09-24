@@ -1,0 +1,21 @@
+[project]
+name = "data-viz-wall"
+version = "0.1.0"
+description = "Two-monitor ambient display: live coalescent simulation source beside its rendered genealogy"
+requires-python = ">=3.11"
+dependencies = ["click>=8.1", "numpy>=1.26", "websockets>=12.0"]
+
+[project.scripts]
+data-viz-wall = "data_viz_wall.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

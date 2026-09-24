@@ -1,0 +1,139 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Turing — coat patterns</title>
+<link rel="stylesheet" href="wall.css">
+<style>
+  body { display: grid; grid-template-columns: 1fr 460px; }
+  #stage { position: relative; overflow: hidden; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+                  image-rendering: auto; }
+  aside { padding: 56px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
+       text-transform: uppercase; color: var(--dim); }
+  #regime { font-size: 42px; margin: 0 0 6px; line-height: 1.15; }
+  #toward { color: var(--dim); font-size: 19px; margin-bottom: 30px; }
+  .bar { height: 5px; background: var(--line); margin-bottom: 40px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; }
+  dl { display: grid; grid-template-columns: 1fr auto; gap: 14px 20px; margin: 0 0 40px; }
+  dt { color: var(--dim); font-size: 17px; align-self: center; }
+  dd { margin: 0; font-size: 30px; text-align: right; }
+  #map { width: 100%; height: 280px; display: block; }
+  .cap { color: var(--dim); font-size: 15px; letter-spacing: .12em;
+         text-transform: uppercase; margin-bottom: 10px; }
+</style>
+<div id="stage"><canvas id="c"></canvas></div>
+<aside>
+  <h1>Gray-Scott</h1>
+  <div id="regime">—</div>
+  <div id="toward"></div>
+  <div class="bar"><i id="prog"></i></div>
+  <dl>
+    <dt>feed rate F</dt><dd id="f">—</dd>
+    <dt>kill rate k</dt><dd id="k">—</dd>
+    <dt>D<sub>u</sub> : D<sub>v</sub></dt><dd>0.16 : 0.08</dd>
+    <dt>grid</dt><dd id="grid">—</dd>
+    <dt>wavelength</dt><dd id="lam">—</dd>
+  </dl>
+  <div class="cap">parameter space</div>
+  <canvas id="map"></canvas>
+</aside>
+<div class="badge">turing wall · pattern</div>
+<script>
+const CSS = getComputedStyle(document.documentElement);
+const T = new Proxy({}, { get: (c, k) => c[k] ?? (c[k] = CSS.getPropertyValue('--' + k).trim()) });
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const off = document.createElement('canvas'), octx = off.getContext('2d');
+const map = document.getElementById('map'), mctx = map.getContext('2d');
+let img = null, N = 0, lut = new Uint8Array(768), S = null, frame = null;
+
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+
+function buildLut(low, high, tlow, thigh, t){
+  const a = mix(hex(low), hex(tlow), t), b = mix(hex(high), hex(thigh), t);
+  for (let i = 0; i < 256; i++) {
+    const s = Math.pow(i / 255, 0.85);
+    for (let ch = 0; ch < 3; ch++) lut[i * 3 + ch] = a[ch] + (b[ch] - a[ch]) * s;
+  }
+}
+
+function resize(){
+  const r = devicePixelRatio || 1;
+  cv.width = cv.clientWidth * r; cv.height = cv.clientHeight * r;
+  map.width = map.clientWidth * r; map.height = map.clientHeight * r;
+  mctx.setTransform(r, 0, 0, r, 0, 0);
+}
+addEventListener('resize', resize);
+
+function paint(){
+  if (!frame || !img) return requestAnimationFrame(paint);
+  const px = img.data;
+  for (let i = 0, j = 0; i < frame.length; i++, j += 4) {
+    const v = frame[i] * 3;
+    px[j] = lut[v]; px[j + 1] = lut[v + 1]; px[j + 2] = lut[v + 2]; px[j + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  const s = Math.max(cv.width / N, cv.height / N);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, (cv.width - N * s) / 2, (cv.height - N * s) / 2, N * s, N * s);
+  requestAnimationFrame(paint);
+}
+requestAnimationFrame(paint);
+
+// (F, k) space: every regime is a point, the simulation is a moving dot.
+const REGIMES = [
+  ['reticulated python', 0.0290, 0.0570], ['leopard rosettes', 0.0350, 0.0650],
+  ['giraffe reticulation', 0.0390, 0.0580], ['pufferfish vermiculation', 0.0540, 0.0630],
+  ['zebra flank', 0.0140, 0.0450], ['guineafowl spotting', 0.0367, 0.0649],
+];
+const trail = [];
+function drawMap(f, k){
+  const w = map.clientWidth, h = map.clientHeight, pad = 26;
+  const X = v => pad + (v - 0.040) / (0.070 - 0.040) * (w - 2 * pad);
+  const Y = v => h - pad - (v - 0.010) / (0.060 - 0.010) * (h - 2 * pad);
+  mctx.clearRect(0, 0, w, h);
+  mctx.strokeStyle = T.grid; mctx.strokeRect(pad, pad, w - 2 * pad, h - 2 * pad);
+  mctx.fillStyle = T.faint; mctx.font = '13px "SF Mono", Menlo, monospace';
+  mctx.fillText('k →', w - pad - 26, h - 8); mctx.fillText('↑ F', 4, pad + 10);
+  mctx.fillStyle = T.axis;
+  for (const [, rf, rk] of REGIMES) {
+    mctx.beginPath(); mctx.arc(X(rk), Y(rf), 4, 0, 7); mctx.fill();
+  }
+  trail.push([X(k), Y(f)]); if (trail.length > 600) trail.shift();
+  mctx.strokeStyle = T.branch; mctx.beginPath();
+  trail.forEach(([x, y], i) => i ? mctx.lineTo(x, y) : mctx.moveTo(x, y));
+  mctx.stroke();
+  mctx.fillStyle = T.accent;
+  mctx.beginPath(); mctx.arc(X(k), Y(f), 6, 0, 7); mctx.fill();
+}
+
+const el = id => document.getElementById(id);
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws?feed=pattern`);
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = e => {
+    if (typeof e.data !== 'string') { frame = new Uint8Array(e.data); return; }
+    const d = JSON.parse(e.data);
+    if (d.kind === 'regime') {
+      S = d;
+      if (N !== d.size) {
+        N = d.size; off.width = off.height = N; img = octx.createImageData(N, N); resize();
+      }
+      const t = Math.min(1, Math.max(0, (d.elapsed - d.dwell) / d.morph));
+      buildLut(d.low, d.high, d.target_low, d.target_high, t);
+      el('regime').textContent = t > 0.5 ? d.target : d.current;
+      el('toward').textContent = t > 0 ? `morphing toward ${d.target}` : `holding · next: ${d.target}`;
+      el('prog').style.width = (t > 0 ? t * 100 : (d.elapsed / d.dwell) * 100) + '%';
+      el('prog').style.background = t > 0 ? T.warm : T.accent;
+      el('grid').textContent = `${d.size}²`;
+    }
+    if (d.kind === 'hold' || d.kind === 'drift') {
+      el('f').textContent = d.f.toFixed(4); el('k').textContent = d.k.toFixed(4);
+      drawMap(d.f, d.k);
+    }
+    if (d.kind === 'wavelength') el('lam').textContent = d.cells.toFixed(1) + ' px';
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+resize(); connect();
+</script>

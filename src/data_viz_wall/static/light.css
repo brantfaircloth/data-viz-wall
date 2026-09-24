@@ -1,0 +1,30 @@
+
+/* --theme light */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-hi: #eef3f6;
+  --ink: #151a20;
+  --dim: #5f6d7e;
+  --label: #6b7887;
+  --faint: #97a3b2;
+  --line: #dce2e9;
+  --grid: #e9edf2;
+  --axis: #cdd5de;
+  --accent: #0f7d90;
+  --branch: #3f7f96;
+  --warm: #b06a10;
+  --green: #35793a;
+  --danger: #b3382d;
+  --code-ink: #2a333f;
+  --code-no: #a8b3c0;
+  --code-hl: #ddeff3;
+  --comment: #7a8794;
+  --kw: #7229b8;
+  --fn: #1a56b0;
+  --str: #2c6e30;
+  --hue-s: 55%;
+  --hue-l: 42%;
+  --anc-left: 31, 96, 156;
+  --anc-right: 176, 106, 16;
+}

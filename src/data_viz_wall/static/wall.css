@@ -1,0 +1,34 @@
+:root {
+  --bg: #0a0e13;
+  --panel: #111821;
+  --panel-hi: #16202c;
+  --ink: #e6edf3;
+  --dim: #7d8da0;
+  --label: #5b6b7d;
+  --faint: #3f4c5c;
+  --line: #1d2836;
+  --grid: #18222e;
+  --axis: #25313f;
+  --accent: #58c8d8;
+  --branch: #4e8fa8;
+  --warm: #e8a33d;
+  --green: #7bc86c;
+  --danger: #e8746d;
+  --code-ink: #b8c4d2;
+  --code-no: #3d4c5e;
+  --code-hl: #16303a;
+  --comment: #5d7186;
+  --kw: #c792ea;
+  --fn: #82aaff;
+  --str: #7bc86c;
+  --hue-s: 62%;
+  --hue-l: 58%;
+  --anc-left: 88, 160, 216;
+  --anc-right: 232, 163, 61;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace; overflow: hidden; }
+.badge { position: fixed; bottom: 18px; right: 22px; color: var(--dim);
+  font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
+.offline { position: fixed; top: 16px; right: 20px; color: var(--warm); font-size: 15px; }

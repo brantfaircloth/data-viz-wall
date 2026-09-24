@@ -1,0 +1,113 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="wall.css">
+<style>
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { padding: 26px 40px 14px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 28px; font-weight: 500; letter-spacing: .02em; }
+  h1 span { color: var(--dim); font-weight: 400; }
+  #status { margin-top: 8px; font-size: 20px; color: var(--accent); min-height: 26px; }
+  #scroll { overflow: hidden; position: relative; }
+  pre { margin: 0; padding: 28px 40px 60vh; font-size: 22px; line-height: 1.55;
+        transition: transform .45s cubic-bezier(.4,0,.2,1); }
+  .ln { display: block; padding: 0 12px; border-left: 4px solid transparent;
+        color: var(--code-ink); white-space: pre; transition: background .2s, color .2s; }
+  .ln .no { display: inline-block; width: 3.2em; color: var(--code-no); user-select: none; }
+  .ln.on { background: var(--code-hl); border-left-color: var(--accent); color: var(--ink); }
+  .c { color: var(--comment); font-style: italic; }
+  .s { color: var(--str); }
+  .k { color: var(--kw); }
+  .n { color: var(--warm); }
+  .d { color: var(--fn); }
+</style>
+<header>
+  <h1 id="title"></h1>
+  <div id="status">waiting for the simulator…</div>
+</header>
+<div id="scroll"><pre id="src"></pre></div>
+<div class="badge" id="badge"></div>
+<script>
+const Q = new URLSearchParams(location.search);
+const PATH = location.pathname;
+const FEED = Q.get('feed') || (PATH.startsWith('/pattern') ? 'pattern' :
+             PATH.startsWith('/synteny') ? 'synteny' :
+             PATH.startsWith('/hybrid') ? 'hybrid' : 'coalescent');
+const SRC = Q.get('src') || {pattern: 'patterns.py', synteny: 'synteny.py', hybrid: 'hybrid.py'}[FEED] || 'sim.py';
+const META = {
+  coalescent: ['simulate_tree()', "Kingman's coalescent, backward in time", 'coalescent wall · source'],
+  pattern: ['react()', 'Gray-Scott reaction-diffusion on a torus', 'turing wall · source'],
+  synteny: ['rearrange()', 'an ancestral karyotype taken apart', 'synteny wall · source'],
+  hybrid: ['reproduce()', 'a tension zone between two populations', 'hybrid wall · source'],
+}[FEED];
+document.title = META[0] + ' — source';
+document.getElementById('title').innerHTML = META[0] + ' <span>— ' + META[1] + '</span>';
+document.getElementById('badge').textContent = META[2];
+
+const KEYWORDS = /\b(def|return|while|for|in|if|else|elif|import|from|not|and|or|None|True|False|lambda|class)\b/g;
+function esc(s){return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function hi(line){
+  const t = esc(line), c = t.indexOf('#');
+  let code = c >= 0 ? t.slice(0, c) : t;
+  const comment = c >= 0 ? t.slice(c) : '';
+  code = code.replace(/("""[\s\S]*?"""|"[^"]*"|'[^']*')/g, '<i class="s">$1</i>')
+             .replace(KEYWORDS, '<i class="k">$1</i>')
+             .replace(/\b(\d+\.?\d*)\b/g, '<i class="n">$1</i>')
+             .replace(/\b(emit|rng|np)\b/g, '<i class="d">$1</i>');
+  return code + (comment ? '<i class="c">' + comment + '</i>' : '');
+}
+const pre = document.getElementById('src'), scroll = document.getElementById('scroll');
+fetch(SRC).then(r => r.text()).then(text => {
+  pre.innerHTML = text.split('\n').map((l, i) =>
+    `<span class="ln" id="L${i+1}"><span class="no">${i+1}</span>${hi(l)}</span>`).join('');
+});
+let active = null, last = 0;
+function mark(no){
+  const el = document.getElementById('L' + no);
+  if (!el || el === active) return;
+  if (performance.now() - last < 220) return;   // don't strobe at frame rate
+  last = performance.now();
+  if (active) active.classList.remove('on');
+  active = el; el.classList.add('on');
+  pre.style.transform = `translateY(${-Math.max(0, el.offsetTop - scroll.clientHeight * 0.42)}px)`;
+}
+const num = x => x.toLocaleString(undefined, {maximumFractionDigits: 0});
+const DESC = {
+  reset: d => `new replicate · n = ${d.n} · Ne = ${num(d.ne)} · θ = ${d.theta}`,
+  wait: d => `k = ${d.k} lineages · waiting ${num(d.t)} generations`,
+  coalesce: d => `two lineages find a common ancestor · ${d.k} remain`,
+  mrca: d => `most recent common ancestor at ${num(d.tmrca)} generations`,
+  mutate: d => `${d.count} mutation${d.count > 1 ? 's' : ''} on a branch carried by ${d.carriers} sample${d.carriers > 1 ? 's' : ''}`,
+  spectrum: d => `total branch length ${num(d.total_length)} generations`,
+  stats: d => `S = ${d.s} · π = ${d.pi.toFixed(2)} · θ_W = ${d.theta_w.toFixed(2)} · Tajima's D = ${d.tajimas_d.toFixed(3)}`,
+  seed: d => `seeding a ${d.size} × ${d.size} torus with activator`,
+  hold: d => `${d.regime} · F = ${d.f.toFixed(4)} · k = ${d.k.toFixed(4)}`,
+  drift: d => `morphing toward ${d.toward} · ${(d.phase * 100).toFixed(0)}% · F = ${d.f.toFixed(4)} · k = ${d.k.toFixed(4)}`,
+  react: d => `mean activator ${d.activator.toFixed(4)}`,
+  wavelength: d => `characteristic wavelength ≈ ${d.cells.toFixed(1)} cells`,
+  ancestor: d => `ancestral karyotype · ${d.n_blocks} blocks on ${d.n_chrom} chromosomes`,
+  inversion: d => `inversion of ${d.span} blocks on chromosome ${d.chrom + 1}`,
+  translocation: d => `reciprocal translocation between chromosomes ${d.chroms[0] + 1} and ${d.chroms[1] + 1}`,
+  fusion: d => `fusion · karyotype contracts to ${d.n_chrom} chromosomes`,
+  fission: d => `fission · karyotype expands to ${d.n_chrom} chromosomes`,
+  contact: d => `secondary contact · ${d.demes} demes × ${d.size} individuals × ${d.loci} markers`,
+  migrate: d => `${d.swapped} individuals exchanged per neighbour · σ = ${d.sigma.toFixed(2)} demes`,
+  select: d => `mean fitness ${d.mean_fitness.toFixed(3)} · worst hybrid loses ${(d.load * 100).toFixed(0)}%`,
+  recombine: d => `gametes drawn at ${d.loci} unlinked markers`,
+  anchor: () => `flanking source populations held pure`,
+  cline: d => `cline width ${d.width.toFixed(1)} demes · centre at deme ${d.centre.toFixed(1)}`,
+  hybrids: d => `${d.f1_like} F1-like individuals in the centre of the zone`,
+  contiguity: d => `${d.events} rearrangements · ${d.runs} syntenic runs · N50 ${d.n50} blocks · breakpoint reuse ${(d.reuse * 100).toFixed(1)}%`,
+};
+const status = document.getElementById('status');
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws?feed=${FEED}`);
+  ws.onmessage = e => {
+    if (typeof e.data !== 'string') return;
+    const d = JSON.parse(e.data);
+    if (d.line) mark(d.line);
+    if (DESC[d.kind]) status.textContent = DESC[d.kind](d);
+  };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+</script>
