@@ -247,3 +247,13 @@ def test_hybrid_index_and_heterozygosity_are_proportions():
 def test_pure_individuals_carry_no_interclass_heterozygosity():
     anc = hybrid.secondary_contact(10, 5, 8, lambda *a, **k: None)
     assert hybrid.heterozygosity(anc).max() == 0.0
+
+
+def test_no_chromosome_runs_away_in_length():
+    """Selection against giants and runts keeps every chromosome near the mean."""
+    for seed in (3, 11, 29):
+        genome, _ = apply_many(500, seed=seed, blocks=600, chroms=10)
+        lengths = [len(c) for c in genome]
+        mean = sum(lengths) / len(lengths)
+        assert max(lengths) <= 3.0 * mean
+        assert min(lengths) >= 0.25 * mean

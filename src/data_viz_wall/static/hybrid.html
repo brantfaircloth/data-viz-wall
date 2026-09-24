@@ -3,10 +3,15 @@
 <title>Hybrid zone — tension cline</title>
 <link rel="stylesheet" href="wall.css">
 <style>
-  body { display: grid; grid-template-columns: 1fr 460px; }
+  /* One viewport-tall row; a long sidebar scrolls itself rather than growing it. */
+  body { display: grid; grid-template-columns: 1fr 460px;
+         grid-template-rows: minmax(0, 1fr); height: 100dvh; }
   #stage { position: relative; overflow: hidden; }
-  canvas#c { position: absolute; inset: 0; }
-  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  /* An absolutely positioned canvas with width:auto lays out at its intrinsic
+     bitmap size, not at the inset box, so the devicePixelRatio scaling would
+     make it 2x the stage on a retina screen and the stage would clip it. */
+  canvas#c { position: absolute; inset: 0; width: 100%; height: 100%; }
+  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; overflow: auto; }
   h1 { margin: 0 0 22px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
        text-transform: uppercase; color: var(--dim); }
   dl { display: grid; grid-template-columns: 1fr auto; gap: 13px 20px; margin: 0 0 32px; }

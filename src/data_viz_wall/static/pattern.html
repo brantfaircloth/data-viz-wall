@@ -3,11 +3,13 @@
 <title>Turing — coat patterns</title>
 <link rel="stylesheet" href="wall.css">
 <style>
-  body { display: grid; grid-template-columns: 1fr 460px; }
+  /* One viewport-tall row; a long sidebar scrolls itself rather than growing it. */
+  body { display: grid; grid-template-columns: 1fr 460px;
+         grid-template-rows: minmax(0, 1fr); height: 100dvh; }
   #stage { position: relative; overflow: hidden; }
   #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%;
                   image-rendering: auto; }
-  aside { padding: 56px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  aside { padding: 56px 46px; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; overflow: auto; }
   h1 { margin: 0 0 6px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
        text-transform: uppercase; color: var(--dim); }
   #regime { font-size: 42px; margin: 0 0 6px; line-height: 1.15; }

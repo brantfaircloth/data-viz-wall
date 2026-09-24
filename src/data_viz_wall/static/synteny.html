@@ -3,10 +3,15 @@
 <title>Synteny — karyotype evolution</title>
 <link rel="stylesheet" href="wall.css">
 <style>
-  body { display: grid; grid-template-columns: 1fr 460px; }
+  /* One viewport-tall row; a long sidebar scrolls itself rather than growing it. */
+  body { display: grid; grid-template-columns: 1fr 460px;
+         grid-template-rows: minmax(0, 1fr); height: 100dvh; }
   #stage { position: relative; overflow: hidden; }
-  canvas#c { position: absolute; inset: 0; }
-  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); }
+  /* An absolutely positioned canvas with width:auto lays out at its intrinsic
+     bitmap size, not at the inset box, so the devicePixelRatio scaling would
+     make it 2x the stage on a retina screen and the stage would clip it. */
+  canvas#c { position: absolute; inset: 0; width: 100%; height: 100%; }
+  aside { padding: 48px 46px; border-left: 1px solid var(--line); background: var(--panel); min-height: 0; overflow: auto; }
   h1 { margin: 0 0 22px; font-size: 22px; font-weight: 500; letter-spacing: .18em;
        text-transform: uppercase; color: var(--dim); }
   dl { display: grid; grid-template-columns: 1fr auto; gap: 13px 20px; margin: 0 0 34px; }
@@ -46,18 +51,25 @@ function resize(){
   ox.width = ox.clientWidth * r; ox.height = ox.clientHeight * r;
   oxc.setTransform(r, 0, 0, r, 0, 0);
 }
-addEventListener('resize', () => { resize(); layoutAncestor(); });
+addEventListener('resize', () => {
+  resize(); layoutAncestor();
+  if (S.chroms.length) setKaryotype(S.chroms);   // zoom changes both rows
+});
 
 const S = { nb: 0, anc: [], from: [], to: [], born: 0, chroms: [], home: [], order: [] };
 const hue = i => `hsl(${(i * 47) % 360} ${T['hue-s']} ${T['hue-l']})`;
 
 // ---- layout: chromosomes as a row of bars, scaled by block count -----------
 function bars(lengths, y, h){
-  const gap = 14, pad = 70, usable = W - 2 * pad - gap * (lengths.length - 1);
+  // Every chromosome gets a floor width, so a short one stays visible next to a
+  // long one; the rest of the row is shared out in proportion to block count.
+  const MIN = 9, gap = 14, pad = 70;
+  const usable = W - 2 * pad - gap * (lengths.length - 1);
   const total = lengths.reduce((a, b) => a + b, 0);
+  const free = Math.max(0, usable - MIN * lengths.length);
   let x = pad;
   return lengths.map(n => {
-    const w = usable * n / total, bar = { x, y, w, h, n };
+    const w = MIN + free * n / total, bar = { x, y, w, h, n };
     x += w + gap;
     return bar;
   });
@@ -123,8 +135,8 @@ function draw(now){
   }
   ctx.globalAlpha = 1;
 
-  paint(S.ancBars, S.anc, 'ANCESTOR', -1);
-  paint(S.curBars, S.chroms, 'DESCENDANT', 1);
+  paint(S.ancBars, S.anc, `ANCESTOR \u00b7 ${S.anc.length} chromosomes`, -1);
+  paint(S.curBars, S.chroms, `DESCENDANT \u00b7 ${S.chroms.length} chromosomes`, 1);
   requestAnimationFrame(draw);
 }
 
@@ -134,14 +146,16 @@ function paint(barset, chroms, label, side){
     const chrom = chroms[ci], w = b.w / b.n;
     chrom.forEach((blk, i) => {
       ctx.fillStyle = hue(S.home[Math.abs(blk)]);
-      ctx.globalAlpha = blk < 0 ? 0.55 : 1;         // inverted blocks sit dimmer
+      ctx.globalAlpha = blk < 0 ? 0.62 : 1;         // inverted blocks sit dimmer
       ctx.fillRect(b.x + i * w, b.y, Math.max(w, 0.7), b.h);
     });
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = T.bg; ctx.lineWidth = 2;
-    ctx.strokeRect(b.x, b.y, b.w, b.h);
-    ctx.fillStyle = T.label; ctx.textAlign = 'center';
-    ctx.fillText(ci + 1, b.x + b.w / 2, b.y + (side < 0 ? -14 : b.h + 22));
+    ctx.strokeStyle = T.line; ctx.lineWidth = 1;
+    ctx.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+    if (b.w >= 18) {
+      ctx.fillStyle = T.label; ctx.textAlign = 'center';
+      ctx.fillText(ci + 1, b.x + b.w / 2, b.y + (side < 0 ? -14 : b.h + 22));
+    }
   });
   ctx.textAlign = 'left'; ctx.fillStyle = T.faint;
   ctx.font = '16px "SF Mono", Menlo, monospace';

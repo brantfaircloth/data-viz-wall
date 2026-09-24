@@ -50,6 +50,8 @@ def translocation(genome, rng, breaks, emit):
     a, b = rng.choice(len(genome), size=2, replace=False)
     i = int(rng.integers(1, len(genome[a])))
     j = int(rng.integers(1, len(genome[b])))
+    if not viable(genome, i + len(genome[b]) - j, j + len(genome[a]) - i):
+        return genome
 
     record(genome[a], i, breaks)
     record(genome[b], j, breaks)
@@ -58,12 +60,20 @@ def translocation(genome, rng, breaks, emit):
     return genome
 
 
+def viable(genome, *lengths, low=0.25, high=3.0):
+    """Karyotypes with a giant or a vanishing chromosome missegregate and are lost."""
+    mean = sum(len(c) for c in genome) / len(genome)
+    return all(low * mean <= n <= high * mean for n in lengths)
+
+
 def fusion(genome, rng, emit, floor=6):
     """Two chromosomes become one; the karyotype contracts."""
     if len(genome) <= floor:
         return genome
-    a, b = rng.choice(len(genome), size=2, replace=False)
+    a, b = rng.choice(len(genome), size=2, replace=False, p=short_first(genome))
     merged = genome[a] + genome[b]
+    if not viable(genome, len(merged)):
+        return genome
     genome = [c for i, c in enumerate(genome) if i not in (a, b)] + [merged]
     emit("fusion", chroms=[int(a), int(b)], length=len(merged), n_chrom=len(genome))
     return genome
@@ -77,11 +87,19 @@ def fission(genome, rng, breaks, emit, ceiling=28):
     if len(genome[c]) < 4:
         return genome
     i = int(rng.integers(2, len(genome[c]) - 1))
+    if not viable(genome, i, len(genome[c]) - i):
+        return genome
 
     record(genome[c], i, breaks)
     genome = [x for k, x in enumerate(genome) if k != c] + [genome[c][:i], genome[c][i:]]
     emit("fission", chrom=int(c), at=i, n_chrom=len(genome))
     return genome
+
+
+def short_first(genome):
+    """Small chromosomes fuse: it is the short acrocentrics that go Robertsonian."""
+    weights = 1.0 / np.array([len(c) for c in genome], dtype=float)
+    return weights / weights.sum()
 
 
 def weighted_chromosome(genome, rng):
